@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Safe Android Studio Deep Cleaner Script
-# Removes Android Studio and related development tools thoroughly but safely
+# Complete Android Studio Removal Script with Root Privileges
+# WARNING: This script requires root access and performs system-wide cleanup
 
 set -euo pipefail
 
@@ -10,9 +10,17 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Logging function
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+    echo -e "${RED}❌ This script must be run as root${NC}"
+    echo "Usage: sudo $0"
+    exit 1
+fi
+
+# Logging functions
 log() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
 }
@@ -29,8 +37,12 @@ error() {
     echo -e "${RED}❌${NC} $1"
 }
 
-# Function to safely remove files/directories
-safe_remove() {
+critical() {
+    echo -e "${PURPLE}🔥 CRITICAL:${NC} $1"
+}
+
+# Function to safely remove with root privileges
+root_remove() {
     local path="$1"
     local description="$2"
     
@@ -47,414 +59,493 @@ safe_remove() {
     fi
 }
 
-# Function to remove files with pattern safely
-safe_remove_pattern() {
-    local base_dir="$1"
-    local pattern="$2"
-    local description="$3"
+# Function to kill processes
+kill_processes() {
+    local process_name="$1"
+    local pids=$(pgrep -f "$process_name" 2>/dev/null || true)
     
-    if [[ -d "$base_dir" ]]; then
-        log "Searching for $description in $base_dir"
-        find "$base_dir" -name "$pattern" -type f 2>/dev/null | while read -r file; do
-            log "Removing: $file"
-            rm -f "$file"
-        done
-        find "$base_dir" -name "$pattern" -type d -empty 2>/dev/null | while read -r dir; do
-            log "Removing empty directory: $dir"
-            rmdir "$dir" 2>/dev/null || true
-        done
+    if [[ -n "$pids" ]]; then
+        log "Killing $process_name processes: $pids"
+        kill -9 $pids 2>/dev/null || true
+        success "Killed $process_name processes"
     fi
 }
 
-# Check if running as root (we don't want that for safety)
-if [[ $EUID -eq 0 ]]; then
-    error "Please don't run this script as root for safety reasons"
-    exit 1
-fi
+# Function to remove from all users
+remove_from_all_users() {
+    local relative_path="$1"
+    local description="$2"
+    
+    for user_home in /home/*; do
+        if [[ -d "$user_home" ]]; then
+            local full_path="$user_home/$relative_path"
+            root_remove "$full_path" "$description for $(basename "$user_home")"
+        fi
+    done
+    
+    # Also check root home
+    local root_path="/root/$relative_path"
+    root_remove "$root_path" "$description for root"
+}
 
-echo "🧹 Android Studio Deep Cleaner - Safe Edition"
-echo "============================================="
-warning "This script will remove ALL Android development tools and data"
-echo "📋 Items to be removed:"
-echo "   • Android Studio installations"
-echo "   • Android SDK and NDK"
-echo "   • Gradle caches and wrapper"
-echo "   • AVD (Virtual Devices)"
-echo "   • IntelliJ IDEA Android plugins"
-echo "   • Development certificates and keys"
-echo "   • Build caches and temporary files"
-echo "   • Flutter SDK (if present)"
-echo "   • Dart SDK (if present)"
-echo "   • Cordova/PhoneGap files"
-echo "   • React Native caches"
+echo "🔥 COMPLETE ANDROID STUDIO SYSTEM-WIDE REMOVAL"
+echo "=============================================="
+critical "THIS SCRIPT WILL PERFORM DESTRUCTIVE SYSTEM-WIDE CLEANUP"
 echo ""
-read -p "❓ Continue with removal? (y/N): " confirm
-[[ ! "$confirm" =~ ^[Yy]$ ]] && { echo "❌ Cancelled."; exit 0; }
+warning "This script will remove:"
+echo "   🗑️  ALL Android Studio installations (system-wide)"
+echo "   🗑️  ALL Android SDK/NDK installations"
+echo "   🗑️  ALL user AVD and emulator data"
+echo "   🗑️  ALL Gradle installations and caches"
+echo "   🗑️  ALL development certificates and keys"
+echo "   🗑️  ALL related system packages and services"
+echo "   🗑️  ALL Flutter/Dart/React Native installations"
+echo "   🗑️  ALL build caches and temporary files"
+echo "   🗑️  ALL desktop entries and system configurations"
+echo "   🗑️  ALL related processes and services"
+echo ""
+critical "THIS CANNOT BE UNDONE!"
+echo ""
+read -p "❓ Are you absolutely sure you want to continue? (type 'DELETE' to confirm): " confirm
+[[ "$confirm" != "DELETE" ]] && { error "Cancelled for safety."; exit 0; }
 
-# Get current user info
-CURRENT_USER=$(whoami)
-USER_HOME="$HOME"
-
-log "Starting deep cleanup for user: $CURRENT_USER"
-log "Home directory: $USER_HOME"
+log "Starting COMPLETE Android Studio system removal..."
 
 # ================================
-# 1. Remove Android Studio Installations
+# 1. Kill All Related Processes
 # ================================
-log "📱 [1/20] Removing Android Studio installations..."
+log "💀 [1/25] Killing all Android Studio related processes..."
 
-# Common installation locations
-ANDROID_STUDIO_LOCATIONS=(
-    "$USER_HOME/android-studio"
-    "$USER_HOME/.local/share/JetBrains/Toolbox/apps/AndroidStudio"
-    "/opt/android-studio"
-    "$USER_HOME/Applications/Android Studio.app"  # macOS style if copied
-    "$USER_HOME/.local/share/applications/android-studio"
+PROCESS_NAMES=(
+    "studio"
+    "android-studio"
+    "gradle"
+    "adb"
+    "fastboot"
+    "emulator"
+    "qemu"
+    "flutter"
+    "dart"
 )
 
-for location in "${ANDROID_STUDIO_LOCATIONS[@]}"; do
-    safe_remove "$location" "Android Studio installation"
+for process in "${PROCESS_NAMES[@]}"; do
+    kill_processes "$process"
 done
 
-# ================================
-# 2. Remove Android SDK and NDK
-# ================================
-log "📦 [2/20] Removing Android SDK and NDK..."
-
-SDK_LOCATIONS=(
-    "$USER_HOME/Android/Sdk"
-    "$USER_HOME/android-sdk"
-    "$USER_HOME/android-sdk-linux"
-    "$USER_HOME/Library/Android/sdk"  # macOS style
-    "$USER_HOME/.android-sdk"
-    "$USER_HOME/android-ndk"
-    "$USER_HOME/android-ndk-*"
-)
-
-for location in "${SDK_LOCATIONS[@]}"; do
-    safe_remove "$location" "Android SDK/NDK"
-done
+# Kill Java processes that might be Android Studio
+pgrep -f "idea.Main" | xargs -r kill -9 2>/dev/null || true
+pgrep -f "com.android" | xargs -r kill -9 2>/dev/null || true
 
 # ================================
-# 3. Remove AVD (Android Virtual Devices)
+# 2. Stop System Services
 # ================================
-log "📱 [3/20] Removing Android Virtual Devices..."
+log "⚙️ [2/25] Stopping system services..."
 
-AVD_LOCATIONS=(
-    "$USER_HOME/.android/avd"
-    "$USER_HOME/.android/cache"
-    "$USER_HOME/.android/build-cache"
-    "$USER_HOME/.android/gradle"
-    "$USER_HOME/Library/Android/avd"  # macOS style
-)
+# Stop adb server
+adb kill-server 2>/dev/null || true
 
-for location in "${AVD_LOCATIONS[@]}"; do
-    safe_remove "$location" "AVD files"
-done
+# Stop any systemd services
+systemctl stop android-studio* 2>/dev/null || true
+systemctl disable android-studio* 2>/dev/null || true
 
 # ================================
-# 4. Remove Gradle Files
+# 3. Remove APT/DEB Packages
 # ================================
-log "🔧 [4/20] Removing Gradle files and caches..."
+log "📦 [3/25] Removing APT packages..."
 
-GRADLE_LOCATIONS=(
-    "$USER_HOME/.gradle"
-    "$USER_HOME/gradle"
-    "$USER_HOME/.gradle-wrapper"
-)
-
-for location in "${GRADLE_LOCATIONS[@]}"; do
-    safe_remove "$location" "Gradle files"
-done
-
-# ================================
-# 5. Remove IntelliJ IDEA Android Configs
-# ================================
-log "💡 [5/20] Removing IntelliJ IDEA Android configurations..."
-
-INTELLIJ_LOCATIONS=(
-    "$USER_HOME/.IntelliJIdea*/config/plugins/android"
-    "$USER_HOME/.IntelliJIdea*/system/plugins-sandbox/plugins/android"
-    "$USER_HOME/.cache/JetBrains/IntelliJIdea*/plugins/android"
-    "$USER_HOME/.local/share/JetBrains/IntelliJIdea*/plugins/android"
-)
-
-for location in "${INTELLIJ_LOCATIONS[@]}"; do
-    safe_remove "$location" "IntelliJ Android plugin"
-done
-
-# ================================
-# 6. Remove Development Certificates
-# ================================
-log "🔐 [6/20] Removing development certificates and keystores..."
-
-CERT_LOCATIONS=(
-    "$USER_HOME/.android/debug.keystore"
-    "$USER_HOME/.android/adbkey"
-    "$USER_HOME/.android/adbkey.pub"
-    "$USER_HOME/android-release-key.keystore"
-    "$USER_HOME/my-release-key.keystore"
-    "$USER_HOME/keystore.jks"
-    "$USER_HOME/.android/androidtool.cfg"
-)
-
-for location in "${CERT_LOCATIONS[@]}"; do
-    safe_remove "$location" "Development certificates"
-done
-
-# ================================
-# 7. Remove Build Caches and Temporary Files
-# ================================
-log "🗂️ [7/20] Removing build caches and temporary files..."
-
-# Remove build directories in common project locations
-COMMON_PROJECT_DIRS=(
-    "$USER_HOME/AndroidStudioProjects"
-    "$USER_HOME/Projects"
-    "$USER_HOME/workspace"
-    "$USER_HOME/Documents"
-    "$USER_HOME/Desktop"
-)
-
-for project_dir in "${COMMON_PROJECT_DIRS[@]}"; do
-    if [[ -d "$project_dir" ]]; then
-        log "Cleaning build files in $project_dir"
-        find "$project_dir" -name "build" -type d -path "*/android/*" -exec rm -rf {} + 2>/dev/null || true
-        find "$project_dir" -name ".gradle" -type d -exec rm -rf {} + 2>/dev/null || true
-        find "$project_dir" -name "*.apk" -type f -exec rm -f {} + 2>/dev/null || true
-        find "$project_dir" -name "*.aab" -type f -exec rm -f {} + 2>/dev/null || true
-    fi
-done
-
-# ================================
-# 8. Remove Flutter SDK
-# ================================
-log "🦋 [8/20] Removing Flutter SDK..."
-
-FLUTTER_LOCATIONS=(
-    "$USER_HOME/flutter"
-    "$USER_HOME/development/flutter"
-    "$USER_HOME/.flutter"
-    "$USER_HOME/snap/flutter"
-    "$USER_HOME/.pub-cache"
-)
-
-for location in "${FLUTTER_LOCATIONS[@]}"; do
-    safe_remove "$location" "Flutter SDK"
-done
-
-# ================================
-# 9. Remove Dart SDK
-# ================================
-log "🎯 [9/20] Removing Dart SDK..."
-
-DART_LOCATIONS=(
-    "$USER_HOME/dart-sdk"
-    "$USER_HOME/.dart"
-    "$USER_HOME/.dartServer"
-)
-
-for location in "${DART_LOCATIONS[@]}"; do
-    safe_remove "$location" "Dart SDK"
-done
-
-# ================================
-# 10. Remove Cordova/PhoneGap Files
-# ================================
-log "📱 [10/20] Removing Cordova/PhoneGap files..."
-
-CORDOVA_LOCATIONS=(
-    "$USER_HOME/.cordova"
-    "$USER_HOME/.phonegap"
-    "$USER_HOME/cordova"
-)
-
-for location in "${CORDOVA_LOCATIONS[@]}"; do
-    safe_remove "$location" "Cordova/PhoneGap files"
-done
-
-# ================================
-# 11. Remove React Native Caches
-# ================================
-log "⚛️ [11/20] Removing React Native caches..."
-
-RN_LOCATIONS=(
-    "$USER_HOME/.react-native-cli"
-    "$USER_HOME/react-native"
-    "$USER_HOME/.metro"
-)
-
-for location in "${RN_LOCATIONS[@]}"; do
-    safe_remove "$location" "React Native files"
-done
-
-# ================================
-# 12. Remove Desktop Entries and Menu Items
-# ================================
-log "🖥️ [12/20] Removing desktop entries..."
-
-DESKTOP_ENTRIES=(
-    "$USER_HOME/.local/share/applications/jetbrains-android-studio.desktop"
-    "$USER_HOME/.local/share/applications/android-studio.desktop"
-    "$USER_HOME/Desktop/Android Studio.desktop"
-    "/usr/share/applications/android-studio.desktop"
-)
-
-for entry in "${DESKTOP_ENTRIES[@]}"; do
-    safe_remove "$entry" "Desktop entry"
-done
-
-# ================================
-# 13. Remove Shell Configuration
-# ================================
-log "🐚 [13/20] Cleaning shell configurations..."
-
-SHELL_CONFIGS=(
-    "$USER_HOME/.bashrc"
-    "$USER_HOME/.zshrc"
-    "$USER_HOME/.profile"
-    "$USER_HOME/.bash_profile"
-)
-
-for config in "${SHELL_CONFIGS[@]}"; do
-    if [[ -f "$config" ]]; then
-        log "Cleaning Android paths from $config"
-        # Create backup
-        cp "$config" "${config}.backup.$(date +%Y%m%d_%H%M%S)"
-        # Remove Android-related exports
-        sed -i '/ANDROID_HOME/d; /ANDROID_SDK_ROOT/d; /android-sdk/d; /android-studio/d; /flutter/d; /dart/d' "$config"
-        success "Cleaned $config (backup created)"
-    fi
-done
-
-# ================================
-# 14. Remove Emulator Files
-# ================================
-log "🎮 [14/20] Removing emulator files..."
-
-EMULATOR_LOCATIONS=(
-    "$USER_HOME/.android/emulator"
-    "$USER_HOME/.android/console-auth-token"
-    "$USER_HOME/.emulator_console_auth_token"
-)
-
-for location in "${EMULATOR_LOCATIONS[@]}"; do
-    safe_remove "$location" "Emulator files"
-done
-
-# ================================
-# 15. Remove JetBrains Toolbox Android Studio
-# ================================
-log "🧰 [15/20] Removing JetBrains Toolbox Android Studio..."
-
-if [[ -d "$USER_HOME/.local/share/JetBrains/Toolbox" ]]; then
-    log "Cleaning JetBrains Toolbox Android Studio installations"
-    find "$USER_HOME/.local/share/JetBrains/Toolbox" -name "*Android*" -type d -exec rm -rf {} + 2>/dev/null || true
+# Find and remove Android-related packages
+ANDROID_PACKAGES=$(dpkg -l 2>/dev/null | grep -E "(android|studio)" | awk '{print $2}' || true)
+if [[ -n "$ANDROID_PACKAGES" ]]; then
+    echo "$ANDROID_PACKAGES" | while read -r package; do
+        log "Removing package: $package"
+        apt remove --purge -y "$package" 2>/dev/null || true
+    done
 fi
 
+# Remove specific common packages
+apt remove --purge -y android-sdk* android-studio* 2>/dev/null || true
+
 # ================================
-# 16. Remove Snap Packages
+# 4. Remove Snap Packages
 # ================================
-log "📦 [16/20] Removing snap packages..."
+log "📦 [4/25] Removing snap packages..."
 
 if command -v snap &> /dev/null; then
-    ANDROID_SNAPS=$(snap list 2>/dev/null | grep -E "(android|flutter)" | awk '{print $1}' || true)
+    ANDROID_SNAPS=$(snap list 2>/dev/null | grep -E "(android|flutter|studio)" | awk '{print $1}' || true)
     if [[ -n "$ANDROID_SNAPS" ]]; then
         echo "$ANDROID_SNAPS" | while read -r snap_name; do
-            log "Removing snap package: $snap_name"
+            log "Removing snap: $snap_name"
             snap remove "$snap_name" 2>/dev/null || true
         done
     fi
 fi
 
 # ================================
-# 17. Remove APT Packages
+# 5. Remove Flatpak Packages
 # ================================
-log "📦 [17/20] Removing APT packages..."
+log "📦 [5/25] Removing flatpak packages..."
 
-if command -v apt &> /dev/null; then
-    APT_PACKAGES=$(dpkg -l 2>/dev/null | grep -E "(android|flutter)" | awk '{print $2}' || true)
-    if [[ -n "$APT_PACKAGES" ]] && [[ "$EUID" -eq 0 ]]; then
-        echo "$APT_PACKAGES" | while read -r package; do
-            log "Removing APT package: $package"
-            apt remove --purge -y "$package" 2>/dev/null || true
-        done
-    fi
+if command -v flatpak &> /dev/null; then
+    flatpak uninstall --system -y com.google.AndroidStudio 2>/dev/null || true
+    flatpak uninstall --user -y com.google.AndroidStudio 2>/dev/null || true
 fi
 
 # ================================
-# 18. Clean Cache Directories
+# 6. Remove System-wide Installations
 # ================================
-log "🧹 [18/20] Cleaning cache directories..."
+log "🗂️ [6/25] Removing system-wide installations..."
 
-CACHE_DIRS=(
-    "$USER_HOME/.cache/android-studio"
-    "$USER_HOME/.cache/JetBrains/AndroidStudio*"
-    "$USER_HOME/.cache/gradle"
-    "$USER_HOME/.cache/flutter"
-    "$USER_HOME/.cache/dart"
+SYSTEM_LOCATIONS=(
+    "/opt/android-studio"
+    "/usr/local/android-studio"
+    "/usr/share/android-studio"
+    "/opt/android-sdk"
+    "/usr/local/android-sdk"
+    "/opt/flutter"
+    "/usr/local/flutter"
+    "/opt/dart-sdk"
+    "/usr/local/dart-sdk"
 )
 
-for cache_dir in "${CACHE_DIRS[@]}"; do
-    safe_remove "$cache_dir" "Cache directory"
+for location in "${SYSTEM_LOCATIONS[@]}"; do
+    root_remove "$location" "System installation"
 done
 
 # ================================
-# 19. Remove Temporary Files
+# 7. Remove User Installations (All Users)
 # ================================
-log "🗑️ [19/20] Removing temporary files..."
+log "👥 [7/25] Removing user installations from all users..."
 
-# Find and remove temporary Android files
-find /tmp -name "*android*" -user "$CURRENT_USER" -exec rm -rf {} + 2>/dev/null || true
-find /tmp -name "*studio*" -user "$CURRENT_USER" -exec rm -rf {} + 2>/dev/null || true
-find /tmp -name "*.apk" -user "$CURRENT_USER" -exec rm -f {} + 2>/dev/null || true
+USER_LOCATIONS=(
+    "android-studio"
+    ".local/share/JetBrains/Toolbox/apps/AndroidStudio"
+    "Android/Sdk"
+    "android-sdk"
+    "android-ndk"
+    "flutter"
+    "dart-sdk"
+    ".android"
+    ".gradle"
+    ".flutter"
+    ".dart"
+    ".pub-cache"
+)
+
+for location in "${USER_LOCATIONS[@]}"; do
+    remove_from_all_users "$location" "User installation"
+done
 
 # ================================
-# 20. Final Cleanup
+# 8. Remove Build Caches System-wide
 # ================================
-log "✨ [20/20] Final cleanup..."
+log "🗄️ [8/25] Removing build caches system-wide..."
+
+# Find and remove build directories
+find /home -name "build" -type d -path "*/android/*" -exec rm -rf {} + 2>/dev/null || true
+find /home -name ".gradle" -type d -exec rm -rf {} + 2>/dev/null || true
+find /root -name "build" -type d -path "*/android/*" -exec rm -rf {} + 2>/dev/null || true
+find /root -name ".gradle" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# ================================
+# 9. Remove APK/AAB Files System-wide
+# ================================
+log "📱 [9/25] Removing APK/AAB files system-wide..."
+
+find /home -name "*.apk" -type f -delete 2>/dev/null || true
+find /home -name "*.aab" -type f -delete 2>/dev/null || true
+find /root -name "*.apk" -type f -delete 2>/dev/null || true
+find /root -name "*.aab" -type f -delete 2>/dev/null || true
+
+# ================================
+# 10. Remove System Binaries
+# ================================
+log "🔧 [10/25] Removing system binaries..."
+
+SYSTEM_BINARIES=(
+    "/usr/bin/android-studio"
+    "/usr/local/bin/android-studio"
+    "/usr/bin/studio"
+    "/usr/local/bin/studio"
+    "/usr/bin/flutter"
+    "/usr/local/bin/flutter"
+    "/usr/bin/dart"
+    "/usr/local/bin/dart"
+)
+
+for binary in "${SYSTEM_BINARIES[@]}"; do
+    root_remove "$binary" "System binary"
+done
+
+# ================================
+# 11. Remove Desktop Entries System-wide
+# ================================
+log "🖥️ [11/25] Removing desktop entries system-wide..."
+
+DESKTOP_LOCATIONS=(
+    "/usr/share/applications/android-studio.desktop"
+    "/usr/share/applications/jetbrains-android-studio.desktop"
+    "/usr/local/share/applications/android-studio.desktop"
+)
+
+for desktop in "${DESKTOP_LOCATIONS[@]}"; do
+    root_remove "$desktop" "System desktop entry"
+done
+
+# Remove from all users
+remove_from_all_users ".local/share/applications/android-studio.desktop" "User desktop entry"
+remove_from_all_users ".local/share/applications/jetbrains-android-studio.desktop" "User desktop entry"
+
+# ================================
+# 12. Clean System Libraries
+# ================================
+log "📚 [12/25] Cleaning system libraries..."
+
+# Remove Android-related libraries
+find /usr/lib -name "*android*" -delete 2>/dev/null || true
+find /usr/local/lib -name "*android*" -delete 2>/dev/null || true
+
+# ================================
+# 13. Clean System Include Files
+# ================================
+log "📋 [13/25] Cleaning system include files..."
+
+root_remove "/usr/include/android" "System include files"
+root_remove "/usr/local/include/android" "Local include files"
+
+# ================================
+# 14. Remove Environment Variables
+# ================================
+log "🌍 [14/25] Cleaning environment variables..."
+
+# Clean system-wide environment
+ENV_FILES=(
+    "/etc/environment"
+    "/etc/profile"
+    "/etc/bash.bashrc"
+    "/etc/zsh/zshrc"
+)
+
+for env_file in "${ENV_FILES[@]}"; do
+    if [[ -f "$env_file" ]]; then
+        log "Cleaning Android variables from $env_file"
+        cp "$env_file" "${env_file}.backup.$(date +%Y%m%d_%H%M%S)"
+        sed -i '/ANDROID_HOME/d; /ANDROID_SDK_ROOT/d; /FLUTTER_ROOT/d; /DART_SDK/d' "$env_file"
+    fi
+done
+
+# Clean user environments
+for user_home in /home/* /root; do
+    if [[ -d "$user_home" ]]; then
+        USER_ENV_FILES=(
+            ".bashrc"
+            ".zshrc"
+            ".profile"
+            ".bash_profile"
+        )
+        
+        for env_file in "${USER_ENV_FILES[@]}"; do
+            full_path="$user_home/$env_file"
+            if [[ -f "$full_path" ]]; then
+                log "Cleaning Android variables from $full_path"
+                cp "$full_path" "${full_path}.backup.$(date +%Y%m%d_%H%M%S)"
+                sed -i '/ANDROID_HOME/d; /ANDROID_SDK_ROOT/d; /FLUTTER_ROOT/d; /DART_SDK/d; /android-sdk/d; /flutter/d; /dart/d' "$full_path"
+            fi
+        done
+    fi
+done
+
+# ================================
+# 15. Remove Systemd Services
+# ================================
+log "⚙️ [15/25] Removing systemd services..."
+
+find /etc/systemd/system -name "*android*" -delete 2>/dev/null || true
+find /etc/systemd/system -name "*studio*" -delete 2>/dev/null || true
+systemctl daemon-reload
+
+# ================================
+# 16. Clean Temporary Files
+# ================================
+log "🗑️ [16/25] Cleaning temporary files..."
+
+# Clean /tmp
+find /tmp -name "*android*" -delete 2>/dev/null || true
+find /tmp -name "*studio*" -delete 2>/dev/null || true
+find /tmp -name "*.apk" -delete 2>/dev/null || true
+
+# Clean /var/tmp
+find /var/tmp -name "*android*" -delete 2>/dev/null || true
+find /var/tmp -name "*studio*" -delete 2>/dev/null || true
+
+# ================================
+# 17. Clean Log Files
+# ================================
+log "📜 [17/25] Cleaning log files..."
+
+# Clean specific log entries (safer than deleting entire logs)
+if [[ -f /var/log/syslog ]]; then
+    cp /var/log/syslog /var/log/syslog.backup.$(date +%Y%m%d_%H%M%S)
+    sed -i '/android-studio\|Android\|emulator/d' /var/log/syslog
+fi
+
+# ================================
+# 18. Remove Cache Directories
+# ================================
+log "🗄️ [18/25] Removing cache directories..."
+
+CACHE_PATTERNS=(
+    ".cache/android-studio"
+    ".cache/JetBrains/AndroidStudio*"
+    ".cache/gradle"
+    ".cache/flutter"
+    ".cache/dart"
+)
+
+for pattern in "${CACHE_PATTERNS[@]}"; do
+    remove_from_all_users "$pattern" "Cache directory"
+done
+
+# ================================
+# 19. Remove Development Certificates
+# ================================
+log "🔐 [19/25] Removing development certificates..."
+
+CERT_PATTERNS=(
+    ".android/debug.keystore"
+    ".android/adbkey*"
+    "*release-key.keystore"
+    "keystore.jks"
+)
+
+for pattern in "${CERT_PATTERNS[@]}"; do
+    remove_from_all_users "$pattern" "Development certificate"
+done
+
+# ================================
+# 20. Clean Package Manager Caches
+# ================================
+log "📦 [20/25] Cleaning package manager caches..."
+
+apt clean
+apt autoremove --purge -y
+
+if command -v snap &> /dev/null; then
+    snap refresh
+fi
+
+# ================================
+# 21. Remove Browser Downloads
+# ================================
+log "🌐 [21/25] Removing Android files from browser downloads..."
+
+for user_home in /home/* /root; do
+    if [[ -d "$user_home" ]]; then
+        DOWNLOAD_DIRS=(
+            "Downloads"
+            "Desktop"
+            "Documents"
+        )
+        
+        for dir in "${DOWNLOAD_DIRS[@]}"; do
+            if [[ -d "$user_home/$dir" ]]; then
+                find "$user_home/$dir" -name "*android*" -type f -delete 2>/dev/null || true
+                find "$user_home/$dir" -name "*studio*" -type f -delete 2>/dev/null || true
+                find "$user_home/$dir" -name "*.apk" -type f -delete 2>/dev/null || true
+            fi
+        done
+    fi
+done
+
+# ================================
+# 22. Remove Configuration Files
+# ================================
+log "⚙️ [22/25] Removing configuration files..."
+
+CONFIG_PATTERNS=(
+    ".IntelliJIdea*/config/plugins/android"
+    ".config/android-studio"
+    ".config/JetBrains/AndroidStudio*"
+)
+
+for pattern in "${CONFIG_PATTERNS[@]}"; do
+    remove_from_all_users "$pattern" "Configuration files"
+done
+
+# ================================
+# 23. Clean Command History
+# ================================
+log "📚 [23/25] Cleaning command history..."
+
+for user_home in /home/* /root; do
+    if [[ -d "$user_home" ]]; then
+        HISTORY_FILES=(
+            ".bash_history"
+            ".zsh_history"
+        )
+        
+        for history_file in "${HISTORY_FILES[@]}"; do
+            full_path="$user_home/$history_file"
+            if [[ -f "$full_path" ]]; then
+                cp "$full_path" "${full_path}.backup.$(date +%Y%m%d_%H%M%S)"
+                sed -i '/android\|studio\|gradle\|flutter\|dart\|adb\|fastboot/Id' "$full_path"
+            fi
+        done
+    fi
+done
+
+# ================================
+# 24. Update System Databases
+# ================================
+log "🔄 [24/25] Updating system databases..."
+
+# Update locate database
+updatedb 2>/dev/null || true
 
 # Update desktop database
-if command -v update-desktop-database &> /dev/null; then
-    update-desktop-database "$USER_HOME/.local/share/applications" 2>/dev/null || true
+update-desktop-database /usr/share/applications 2>/dev/null || true
+for user_home in /home/*; do
+    if [[ -d "$user_home/.local/share/applications" ]]; then
+        sudo -u $(basename "$user_home") update-desktop-database "$user_home/.local/share/applications" 2>/dev/null || true
+    fi
+done
+
+# ================================
+# 25. Final System Cleanup
+# ================================
+log "✨ [25/25] Final system cleanup..."
+
+# Clear system caches
+sync
+echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+# Remove empty directories
+find /home -type d -empty -path "*android*" -delete 2>/dev/null || true
+find /home -type d -empty -path "*studio*" -delete 2>/dev/null || true
+
+echo ""
+success "🔥 COMPLETE ANDROID STUDIO SYSTEM REMOVAL FINISHED!"
+echo ""
+critical "SYSTEM-WIDE REMOVAL SUMMARY:"
+log "   🗑️  All Android Studio installations removed"
+log "   🗑️  All Android SDK/NDK removed"
+log "   🗑️  All user data and configurations removed"
+log "   🗑️  All system packages and services removed"
+log "   🗑️  All development tools and caches removed"
+log "   🗑️  All related processes terminated"
+log "   🗑️  All environment variables cleaned"
+log "   🗑️  All desktop entries removed"
+log "   🗑️  All certificates and keys removed"
+log "   🗑️  All temporary and cache files removed"
+echo ""
+warning "Configuration backups created with timestamp suffixes"
+warning "A system reboot is STRONGLY recommended"
+echo ""
+read -p "🔄 Reboot system now? (y/N): " reboot_confirm
+if [[ "$reboot_confirm" =~ ^[Yy]$ ]]; then
+    log "Rebooting system..."
+    reboot
+else
+    warning "Please reboot manually to complete the removal process"
 fi
 
-# Clear bash history of Android commands
-if [[ -f "$USER_HOME/.bash_history" ]]; then
-    log "Cleaning Android commands from bash history"
-    cp "$USER_HOME/.bash_history" "$USER_HOME/.bash_history.backup.$(date +%Y%m%d_%H%M%S)"
-    sed -i '/android/Id; /studio/Id; /gradle/Id; /flutter/Id; /dart/Id; /adb/Id; /fastboot/Id' "$USER_HOME/.bash_history"
-fi
-
-echo ""
-success "🎉 Android Studio Deep Cleanup Complete!"
-echo ""
-log "📊 Summary of cleanup:"
-log "   ✅ Android Studio installations removed"
-log "   ✅ SDK and NDK removed"
-log "   ✅ Virtual devices removed"
-log "   ✅ Gradle files removed"
-log "   ✅ Development certificates removed"
-log "   ✅ Build caches cleared"
-log "   ✅ Flutter/Dart SDKs removed"
-log "   ✅ Desktop entries removed"
-log "   ✅ Shell configurations cleaned"
-log "   ✅ Cache directories cleared"
-echo ""
-warning "Backups of modified config files were created with timestamp suffixes"
-warning "Please restart your terminal or source your shell config files"
-echo ""
-log "🔄 Recommended next steps:"
-log "   1. Restart your terminal"
-log "   2. Log out and log back in (to clear environment variables)"
-log "   3. Check that 'which android-studio' returns nothing"
-log "   4. Verify no Android Studio processes are running"
-echo ""
-read -p "🔍 Do you want to see a summary of remaining Android-related files? (y/N): " show_remaining
-if [[ "$show_remaining" =~ ^[Yy]$ ]]; then
-    log "Searching for any remaining Android-related files..."
-    find "$USER_HOME" -iname "*android*" -o -iname "*studio*" -o -iname "*gradle*" 2>/dev/null | head -20
-    log "If any important files are shown above, they were preserved for safety"
-fi
-
-success "Deep cleanup completed successfully! 🎉"
+success "Android Studio has been completely removed from the system! 🎉"
